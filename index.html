@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>משיכת נתוני בורסה ל-Google Sheets</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['System-ui', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Hack', 'Menlo', 'monospace'] // שילוב פונטים טכניים למראה מקצועי
+                    },
+                    colors: {
+                        finance: {
+                            dark: '#0f172a',    // כחול/אפור כהה מאוד לרקע
+                            slate: '#1e293b',   // אפור סלייט לאזורי התוכן
+                            blue: '#2563eb',    // כחול ראשי לכפתורים
+                            hover: '#1d4ed8',   // כחול כהה יותר למצב Hover
+                            accent: '#60a5fa'   // תכלת להדגשות וטקסטים
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-finance-dark text-slate-200 font-sans min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-finance-slate p-8 rounded-xl shadow-2xl w-full max-w-lg border border-slate-700">
+        <h1 class="text-3xl font-bold mb-6 text-finance-accent text-center font-mono">מנוע נתוני שוק</h1>
+        
+        <form id="financeForm" class="space-y-5">
+            <div>
+                <label for="tickers" class="block text-sm font-medium mb-1">סימולי מניות (מופרדים בפסיק):</label>
+                <input type="text" id="tickers" required placeholder="לדוגמה: AAPL, MSFT, TSLA" dir="ltr"
+                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white font-mono focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label for="startDate" class="block text-sm font-medium mb-1">תאריך התחלה:</label>
+                    <input type="date" id="startDate" required
+                        class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
+                </div>
+                <div>
+                    <label for="endDate" class="block text-sm font-medium mb-1">תאריך סיום:</label>
+                    <input type="date" id="endDate" required
+                        class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
+                </div>
+            </div>
+
+            <div>
+                <label for="frequency" class="block text-sm font-medium mb-1">תדירות נתונים:</label>
+                <select id="frequency" required dir="ltr"
+                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
+                    <option value="1d">Daily (1d)</option>
+                    <option value="1wk">Weekly (1wk)</option>
+                    <option value="1mo">Monthly (1mo)</option>
+                </select>
+            </div>
+
+            <button type="submit" id="submitBtn"
+                class="w-full bg-finance-blue hover:bg-finance-hover text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 mt-4 flex justify-center items-center">
+                בנה גיליון נתונים
+            </button>
+        </form>
+
+        <div id="resultArea" class="hidden mt-8 pt-6 border-t border-slate-700 text-center">
+            <h2 class="text-xl font-semibold mb-4 text-green-400">הגיליון נוצר בהצלחה!</h2>
+            <a id="sheetBtn" href="#" target="_blank" rel="noopener noreferrer"
+                class="inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-lg transition-colors duration-200 shadow-lg font-mono text-lg text-center cursor-pointer">
+                פתח את גיליון גוגל
+            </a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('financeForm').addEventListener('submit', async function(e) {
+            e.preventDefault(); // מניעת רענון העמוד
+            
+            const btn = document.getElementById('submitBtn');
+            const originalText = btn.innerText;
+            const resultDiv = document.getElementById('resultArea');
+            const sheetBtn = document.getElementById('sheetBtn');
+
+            // 1. איסוף וסידור הנתונים מהטופס
+            const tickersStr = document.getElementById('tickers').value;
+            // חלוקה למערך, ניקוי רווחים והפיכה לאותיות גדולות
+            const tickers = tickersStr.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const frequency = document.getElementById('frequency').value;
+
+            // 2. עדכון ממשק משתמש - מצב טעינה
+            btn.innerText = 'טוען נתונים...';
+            btn.disabled = true;
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            resultDiv.classList.add('hidden'); // הסתרת כפתור תוצאה קודם אם קיים
+
+            // הכנת ה-Payload
+            const payload = {
+                tickers: tickers,
+                startDate: startDate,
+                endDate: endDate,
+                frequency: frequency
+            };
+
+            // הכתובת של שרת ה-Google Apps Script (יש להחליף בכתובת האמיתית שלך)
+            const webAppUrl = 'https://script.google.com/macros/s/AKfycbzEmWl_oZ6Pz76DMRoUDMH01jMmZoyjfOJEAjl62lhf_5wNStSwusAFZoM0h0OadXfZ/exec';
+
+            try {
+                // 3. שליחת הבקשה ב-fetch
+                const response = await fetch(webAppUrl, {
+                    method: 'POST',
+                    // שימוש ב-text/plain כדי למנוע את בדיקת ה-CORS (Preflight OPTIONS) של הדפדפן
+                    headers: { 
+                        'Content-Type': 'text/plain;charset=utf-8' 
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                // המרת התגובה ל-JSON
+                const data = await response.json();
+
+                // 4. בדיקת התוצאה וטיפול בממשק
+                if (data.sheetUrl) {
+                    sheetBtn.href = data.sheetUrl;      // עדכון הקישור
+                    resultDiv.classList.remove('hidden'); // הצגת אזור התוצאה
+                } else if (data.error) {
+                    alert('התקבלה שגיאה מהשרת: ' + data.error);
+                } else {
+                    alert('התקבלה תגובה לא צפויה מהשרת.');
+                }
+
+            } catch (error) {
+                console.error('Error:', error);
+                alert('שגיאת תקשורת. לא ניתן היה להתחבר לשרת.');
+            } finally {
+                // 5. החזרת הכפתור למצבו הרגיל בכל מקרה (הצלחה או כישלון)
+                btn.innerText = originalText;
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+    </script>
+</body>
+</html>
