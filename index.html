@@ -1,152 +1,455 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>משיכת נתוני בורסה ל-Google Sheets</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['System-ui', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'Hack', 'Menlo', 'monospace'] // שילוב פונטים טכניים למראה מקצועי
-                    },
-                    colors: {
-                        finance: {
-                            dark: '#0f172a',    // כחול/אפור כהה מאוד לרקע
-                            slate: '#1e293b',   // אפור סלייט לאזורי התוכן
-                            blue: '#2563eb',    // כחול ראשי לכפתורים
-                            hover: '#1d4ed8',   // כחול כהה יותר למצב Hover
-                            accent: '#60a5fa'   // תכלת להדגשות וטקסטים
-                        }
-                    }
-                }
-            }
-        }
-    </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>מנוע נתוני שוק</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans+Hebrew:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080a0e;
+      --surface:   #0d1117;
+      --surface2:  #161b22;
+      --border:    #21262d;
+      --border2:   #30363d;
+      --text:      #e6edf3;
+      --muted:     #7d8590;
+      --accent:    #58a6ff;
+      --accent2:   #1f6feb;
+      --green:     #3fb950;
+      --green-dim: #1a3a22;
+      --glow:      rgba(88, 166, 255, 0.12);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Sans Hebrew', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(88,166,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(88,166,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    body::after {
+      content: '';
+      position: fixed;
+      top: -200px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(88,166,255,0.07) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .card {
+      position: relative;
+      z-index: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 40px;
+      width: 100%;
+      max-width: 480px;
+      box-shadow:
+        0 0 0 1px rgba(255,255,255,0.03),
+        0 16px 48px rgba(0,0,0,0.6),
+        0 0 80px var(--glow);
+    }
+
+    .header {
+      margin-bottom: 36px;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(88,166,255,0.08);
+      border: 1px solid rgba(88,166,255,0.2);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: var(--accent);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+
+    .badge::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    h1 {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+    }
+
+    h1 span { color: var(--accent); }
+
+    .subtitle {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .form-group { margin-bottom: 20px; }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      font-family: 'IBM Plex Mono', monospace;
+    }
+
+    input, select {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      appearance: none;
+    }
+
+    input::placeholder { color: var(--muted); }
+
+    input:focus, select:focus {
+      border-color: var(--accent2);
+      box-shadow: 0 0 0 3px rgba(88,166,255,0.1);
+    }
+
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.5);
+      cursor: pointer;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .select-wrap { position: relative; }
+
+    .select-wrap::after {
+      content: '▾';
+      position: absolute;
+      left: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      pointer-events: none;
+      font-size: 12px;
+    }
+
+    select option { background: var(--surface2); }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 28px 0;
+    }
+
+    .btn-submit {
+      width: 100%;
+      background: var(--accent2);
+      border: 1px solid rgba(88,166,255,0.3);
+      border-radius: 8px;
+      padding: 12px;
+      color: #fff;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      background: #388bfd;
+      box-shadow: 0 0 20px rgba(88,166,255,0.25);
+    }
+
+    .btn-submit:active:not(:disabled) { transform: scale(0.99); }
+
+    .btn-submit:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .spinner {
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .result-area {
+      display: none;
+      margin-top: 24px;
+      background: var(--green-dim);
+      border: 1px solid rgba(63,185,80,0.25);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      animation: fadeUp 0.3s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .result-area .label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .result-area .label::before {
+      content: '✓';
+      font-size: 12px;
+    }
+
+    .btn-sheet {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      background: transparent;
+      border: 1px solid rgba(63,185,80,0.4);
+      border-radius: 8px;
+      padding: 11px;
+      color: var(--green);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-sheet:hover {
+      background: rgba(63,185,80,0.08);
+      box-shadow: 0 0 16px rgba(63,185,80,0.15);
+    }
+
+    .btn-sheet svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+
+    .bottom-bar {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer-note {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      color: #3d4451;
+      letter-spacing: 0.05em;
+    }
+
+    .github-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      transition: color 0.15s;
+    }
+
+    .github-link:hover { color: var(--text); }
+
+    .github-link svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+  </style>
 </head>
-<body class="bg-finance-dark text-slate-200 font-sans min-h-screen flex items-center justify-center p-4">
+<body>
 
-    <div class="bg-finance-slate p-8 rounded-xl shadow-2xl w-full max-w-lg border border-slate-700">
-        <h1 class="text-3xl font-bold mb-6 text-finance-accent text-center font-mono">מנוע נתוני שוק</h1>
-        
-        <form id="financeForm" class="space-y-5">
-            <div>
-                <label for="tickers" class="block text-sm font-medium mb-1">סימולי מניות (מופרדים בפסיק):</label>
-                <input type="text" id="tickers" required placeholder="לדוגמה: AAPL, MSFT, TSLA" dir="ltr"
-                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white font-mono focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
-            </div>
-
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label for="startDate" class="block text-sm font-medium mb-1">תאריך התחלה:</label>
-                    <input type="date" id="startDate" required
-                        class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
-                </div>
-                <div>
-                    <label for="endDate" class="block text-sm font-medium mb-1">תאריך סיום:</label>
-                    <input type="date" id="endDate" required
-                        class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
-                </div>
-            </div>
-
-            <div>
-                <label for="frequency" class="block text-sm font-medium mb-1">תדירות נתונים:</label>
-                <select id="frequency" required dir="ltr"
-                    class="w-full bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-finance-accent focus:ring-1 focus:ring-finance-accent transition-colors">
-                    <option value="1d">Daily (1d)</option>
-                    <option value="1wk">Weekly (1wk)</option>
-                    <option value="1mo">Monthly (1mo)</option>
-                </select>
-            </div>
-
-            <button type="submit" id="submitBtn"
-                class="w-full bg-finance-blue hover:bg-finance-hover text-white font-bold py-3 px-4 rounded-lg transition-colors duration-200 mt-4 flex justify-center items-center">
-                בנה גיליון נתונים
-            </button>
-        </form>
-
-        <div id="resultArea" class="hidden mt-8 pt-6 border-t border-slate-700 text-center">
-            <h2 class="text-xl font-semibold mb-4 text-green-400">הגיליון נוצר בהצלחה!</h2>
-            <a id="sheetBtn" href="#" target="_blank" rel="noopener noreferrer"
-                class="inline-block w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-lg transition-colors duration-200 shadow-lg font-mono text-lg text-center cursor-pointer">
-                פתח את גיליון גוגל
-            </a>
-        </div>
+  <div class="card">
+    <div class="header">
+      <div class="badge">Market Data Engine</div>
+      <h1>מנוע נתוני <span>שוק</span></h1>
+      <p class="subtitle">משיכת נתוני מניות ל-Google Sheets</p>
     </div>
 
-    <script>
-        document.getElementById('financeForm').addEventListener('submit', async function(e) {
-            e.preventDefault(); // מניעת רענון העמוד
-            
-            const btn = document.getElementById('submitBtn');
-            const originalText = btn.innerText;
-            const resultDiv = document.getElementById('resultArea');
-            const sheetBtn = document.getElementById('sheetBtn');
+    <form id="financeForm">
+      <div class="form-group">
+        <label>סימולי מניות</label>
+        <input type="text" id="tickers" required placeholder="AAPL, MSFT, TSLA" dir="ltr">
+      </div>
 
-            // 1. איסוף וסידור הנתונים מהטופס
-            const tickersStr = document.getElementById('tickers').value;
-            // חלוקה למערך, ניקוי רווחים והפיכה לאותיות גדולות
-            const tickers = tickersStr.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            const frequency = document.getElementById('frequency').value;
+      <div class="grid-2">
+        <div class="form-group">
+          <label>תאריך התחלה</label>
+          <input type="date" id="startDate" required>
+        </div>
+        <div class="form-group">
+          <label>תאריך סיום</label>
+          <input type="date" id="endDate" required>
+        </div>
+      </div>
 
-            // 2. עדכון ממשק משתמש - מצב טעינה
-            btn.innerText = 'טוען נתונים...';
-            btn.disabled = true;
-            btn.classList.add('opacity-50', 'cursor-not-allowed');
-            resultDiv.classList.add('hidden'); // הסתרת כפתור תוצאה קודם אם קיים
+      <div class="form-group">
+        <label>תדירות נתונים</label>
+        <div class="select-wrap">
+          <select id="frequency" dir="ltr">
+            <option value="1d">Daily (1d)</option>
+            <option value="1wk">Weekly (1wk)</option>
+            <option value="1mo">Monthly (1mo)</option>
+          </select>
+        </div>
+      </div>
 
-            // הכנת ה-Payload
-            const payload = {
-                tickers: tickers,
-                startDate: startDate,
-                endDate: endDate,
-                frequency: frequency
-            };
+      <div class="divider"></div>
 
-            // הכתובת של שרת ה-Google Apps Script (יש להחליף בכתובת האמיתית שלך)
-            const webAppUrl = 'https://script.google.com/macros/s/AKfycbzUBZGOSfKASLzyAK4SjyeNVXAyjPKg6Fca5dsDLWF9g0f0erm-EhZECBb9oq22ksiB/exec';
+      <button type="submit" id="submitBtn" class="btn-submit">
+        <div class="spinner" id="spinner"></div>
+        <span id="btnText">בנה גיליון נתונים</span>
+      </button>
+    </form>
 
-            try {
-                // 3. שליחת הבקשה ב-fetch
-                const response = await fetch(webAppUrl, {
-                    method: 'POST',
-                    // שימוש ב-text/plain כדי למנוע את בדיקת ה-CORS (Preflight OPTIONS) של הדפדפן
-                    headers: { 
-                        'Content-Type': 'text/plain;charset=utf-8' 
-                    },
-                    body: JSON.stringify(payload)
-                });
+    <div class="result-area" id="resultArea">
+      <div class="label">גיליון נוצר בהצלחה</div>
+      <a id="sheetBtn" href="#" target="_blank" rel="noopener noreferrer" class="btn-sheet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        פתח את גיליון גוגל
+      </a>
+    </div>
 
-                // המרת התגובה ל-JSON
-                const data = await response.json();
+    <div class="bottom-bar">
+      <span class="footer-note">YAHOO FINANCE + APPS SCRIPT</span>
+      <a href="https://github.com/ShaharHarel21" target="_blank" rel="noopener noreferrer" class="github-link">
+        <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z"/>
+        </svg>
+        ShaharHarel21
+      </a>
+    </div>
+  </div>
 
-                // 4. בדיקת התוצאה וטיפול בממשק
-                if (data.sheetUrl) {
-                    sheetBtn.href = data.sheetUrl;      // עדכון הקישור
-                    resultDiv.classList.remove('hidden'); // הצגת אזור התוצאה
-                } else if (data.error) {
-                    alert('התקבלה שגיאה מהשרת: ' + data.error);
-                } else {
-                    alert('התקבלה תגובה לא צפויה מהשרת.');
-                }
+  <script>
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzUBZGOSfKASLzyAK4SjyeNVXAyjPKg6Fca5dsDLWF9g0f0erm-EhZECBb9oq22ksiB/exec';
 
-            } catch (error) {
-                console.error('Error:', error);
-                alert('שגיאת תקשורת. לא ניתן היה להתחבר לשרת.');
-            } finally {
-                // 5. החזרת הכפתור למצבו הרגיל בכל מקרה (הצלחה או כישלון)
-                btn.innerText = originalText;
-                btn.disabled = false;
-                btn.classList.remove('opacity-50', 'cursor-not-allowed');
-            }
+    document.getElementById('financeForm').addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      const btn       = document.getElementById('submitBtn');
+      const spinner   = document.getElementById('spinner');
+      const btnText   = document.getElementById('btnText');
+      const resultDiv = document.getElementById('resultArea');
+      const sheetBtn  = document.getElementById('sheetBtn');
+
+      const tickers   = document.getElementById('tickers').value.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+      const startDate = document.getElementById('startDate').value;
+      const endDate   = document.getElementById('endDate').value;
+      const frequency = document.getElementById('frequency').value;
+
+      btn.disabled = true;
+      spinner.style.display = 'block';
+      btnText.textContent = 'טוען נתונים...';
+      resultDiv.style.display = 'none';
+
+      try {
+        const response = await fetch(WEB_APP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ tickers, startDate, endDate, frequency })
         });
-    </script>
+
+        const data = await response.json();
+
+        if (data.sheetUrl) {
+          sheetBtn.href = data.sheetUrl;
+          resultDiv.style.display = 'block';
+        } else if (data.error) {
+          alert('שגיאה מהשרת: ' + data.error);
+        } else {
+          alert('התקבלה תגובה לא צפויה.');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('שגיאת תקשורת. לא ניתן להתחבר לשרת.');
+      } finally {
+        btn.disabled = false;
+        spinner.style.display = 'none';
+        btnText.textContent = 'בנה גיליון נתונים';
+      }
+    });
+  </script>
 </body>
 </html>
